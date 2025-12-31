@@ -97,11 +97,14 @@
       transform:translate(var(--x),var(--y));
       animation: float var(--t) linear infinite;
       mix-blend-mode: screen;
+      will-change: transform;
     }
+    /* ✅ 默认速度由 CSS 变量控制，JS 会在“生成”瞬间加速再回落 */
     @keyframes float{
       from{ transform:translate(var(--x), calc(var(--y) + 30vh)); }
       to{ transform:translate(calc(var(--x) + 6vw), calc(var(--y) - 40vh)); }
     }
+    .bokeh.boost i{ animation-duration: calc(var(--t) * .55); filter: brightness(1.15); }
 
     .wrap{
       position:relative; z-index:1;
@@ -252,6 +255,54 @@
     }
     .blessing > *{ position:relative; z-index:1; }
 
+    /* ✅ 入场“闪光 + 光晕扩散”覆盖层 */
+    .flash{
+      position:fixed; inset:0; z-index:2;
+      pointer-events:none;
+      opacity:0;
+      background:
+        radial-gradient(closest-side at 50% 50%, rgba(255,255,255,.85), rgba(255,255,255,0) 60%),
+        radial-gradient(closest-side at 50% 50%, rgba(124,92,255,.55), rgba(124,92,255,0) 70%),
+        radial-gradient(closest-side at 50% 50%, rgba(0,255,240,.35), rgba(0,255,240,0) 75%);
+      mix-blend-mode: screen;
+      transform: scale(.92);
+      filter: blur(.2px);
+    }
+    .flash.play{
+      animation: flashPop .34s ease-out 1;
+    }
+    @keyframes flashPop{
+      0%{ opacity:0; transform: scale(.86); }
+      35%{ opacity:.90; transform: scale(1); }
+      100%{ opacity:0; transform: scale(1.18); }
+    }
+
+    /* ✅ “粒子聚拢”感觉：卡片背后一个能量环 */
+    .halo{
+      position:absolute;
+      left:50%; top:42%;
+      width:min(520px, 86vw);
+      aspect-ratio:1/1;
+      transform: translate(-50%,-50%) scale(.85);
+      border-radius:50%;
+      pointer-events:none;
+      opacity:0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 46%, rgba(255,255,255,.22) 52%, rgba(255,255,255,0) 62%),
+        radial-gradient(circle at 50% 50%, rgba(124,92,255,0) 40%, rgba(124,92,255,.22) 58%, rgba(124,92,255,0) 72%),
+        radial-gradient(circle at 50% 50%, rgba(0,255,240,0) 40%, rgba(0,255,240,.12) 62%, rgba(0,255,240,0) 76%);
+      filter: blur(.4px);
+      mix-blend-mode: screen;
+    }
+    .halo.play{
+      animation: haloIn .55s ease-out 1;
+    }
+    @keyframes haloIn{
+      0%{ opacity:0; transform: translate(-50%,-50%) scale(.68); }
+      45%{ opacity:.85; transform: translate(-50%,-50%) scale(1); }
+      100%{ opacity:0; transform: translate(-50%,-50%) scale(1.18); }
+    }
+
     .h1{
       display:flex; justify-content:center; gap:12px; flex-wrap:wrap;
       font-size:clamp(30px,4vw,54px); font-weight:950;
@@ -262,7 +313,7 @@
       -webkit-background-clip:text; color:transparent;
     }
 
-    /* ✅ 打字机：文本容器 */
+    /* 打字机 */
     .p{
       margin-top:18px;
       line-height:1.9;
@@ -364,6 +415,7 @@
       .bokeh i, .meteor, .stars, .grain, .blessing::after{ animation:none !important; }
       .stage, .gate, .blessing{ transition:none !important; }
       .caret{ animation:none !important; }
+      .flash, .halo{ display:none !important; }
     }
   </style>
 </head>
@@ -379,7 +431,7 @@
     <div class="meteor" style="--top:8vh; --left:-55vw;--dur:11.2s"></div>
   </div>
 
-  <div class="bokeh" aria-hidden="true">
+  <div class="bokeh" id="bokeh" aria-hidden="true">
     <i style="--s:14px;--o:.25;--x:8vw; --y:78vh;--t:14s"></i>
     <i style="--s:22px;--o:.18;--x:16vw;--y:70vh;--t:18s"></i>
     <i style="--s:18px;--o:.22;--x:26vw;--y:84vh;--t:16s"></i>
@@ -397,6 +449,9 @@
     <i style="--s:16px;--o:.18;--x:88vw;--y:46vh;--t:20s"></i>
   </div>
 
+  <!-- ✅ 入场闪光层 -->
+  <div class="flash" id="flash" aria-hidden="true"></div>
+
   <div class="wrap">
     <div class="gate" id="gate">
       <div class="logo"><span class="dot"></span>新年专属祝福</div>
@@ -408,7 +463,10 @@
     </div>
 
     <div class="stage" id="stage">
-      <div class="blessing">
+      <!-- ✅ 能量环放在卡片后面 -->
+      <div class="halo" id="halo" aria-hidden="true"></div>
+
+      <div class="blessing" id="card">
         <h1 class="h1" id="headline"></h1>
         <div class="p" id="text"></div>
       </div>
@@ -492,21 +550,14 @@ const pool=[
 
 let party = false;
 
-/* =========================================================
-   ✅ 强化版打字机：保证逐字显示（更稳定）
-   - 先清空
-   - 先渲染一帧（让卡片入场先显示）
-   - 再逐字 append
-   ========================================================= */
+/* ===== 打字机（更稳定） ===== */
 let typingAbort = null;
-
 function typewriter(el, text, durationMs = 2000){
-  if(typeof typingAbort === "function") typingAbort(); // 停止上一次
+  if(typeof typingAbort === "function") typingAbort();
 
   let stopped = false;
   typingAbort = () => { stopped = true; };
 
-  // 清空并加光标
   el.textContent = "";
   const caret = document.createElement("span");
   caret.className = "caret";
@@ -515,28 +566,51 @@ function typewriter(el, text, durationMs = 2000){
 
   const chars = Array.from(text);
   const total = chars.length;
-
-  // 每字间隔（最小 22ms，保证肉眼可见）
   const step = Math.max(22, Math.floor(durationMs / Math.max(1, total)));
 
   let i = 0;
 
-  // 先等两帧 + 120ms：让入场动画先落地，避免“看起来瞬间完成”
-  requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      setTimeout(function run(){
-        if(stopped) return;
-        if(i >= total){
-          // 结束：光标停一下再消失
-          setTimeout(()=>{ if(!stopped) caret.remove(); }, 550);
-          return;
-        }
-        caret.insertAdjacentText("beforebegin", chars[i]);
-        i++;
-        setTimeout(run, step);
-      }, 120);
-    });
-  });
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    setTimeout(function run(){
+      if(stopped) return;
+      if(i >= total){
+        setTimeout(()=>{ if(!stopped) caret.remove(); }, 550);
+        return;
+      }
+      caret.insertAdjacentText("beforebegin", chars[i]);
+      i++;
+      setTimeout(run, step);
+    }, 120);
+  }));
+}
+
+/* =========================================================
+   ✅ 入场仪式感：闪光 + 光晕 + bokeh 加速回落
+   ========================================================= */
+const flash = $("#flash");
+const halo = $("#halo");
+const bokeh = $("#bokeh");
+let bokehTimer = null;
+
+function playEntranceFX(){
+  // 闪光
+  if(flash){
+    flash.classList.remove("play");
+    void flash.offsetWidth; // reflow 触发重播
+    flash.classList.add("play");
+  }
+  // 光晕环
+  if(halo){
+    halo.classList.remove("play");
+    void halo.offsetWidth;
+    halo.classList.add("play");
+  }
+  // bokeh 加速回落
+  if(bokeh){
+    bokeh.classList.add("boost");
+    clearTimeout(bokehTimer);
+    bokehTimer = setTimeout(()=>bokeh.classList.remove("boost"), 520);
+  }
 }
 
 /* ===== 展示 ===== */
@@ -550,12 +624,15 @@ function show(name){
 
   const fullText = rand(pool) + `\n\n— 专属给 ${clean} 的祝福`;
 
-  // ✅ 关键：先切换舞台（让卡片出现），再打字
+  // 先让卡片入场
   $("#gate").classList.add("hidden");
   $("#stage").classList.add("show");
   document.body.classList.add("party");
 
-  // ✅ 打字机（2秒完成）
+  // ✅ 再触发仪式感特效（0.3s 闪光 + 光晕扩散）
+  playEntranceFX();
+
+  // 打字机
   typewriter($("#text"), fullText, 2000);
 
   party = true;
@@ -565,12 +642,22 @@ function show(name){
 $("#go").onclick = () => show($("#name").value);
 $("#name").onkeydown = e => e.key==="Enter" && show($("#name").value);
 
-/* ===== 烟花 ===== */
+/* =========================================================
+   ✅ 烟花：移动端卡顿优化
+   1) 粒子上限（超出丢弃）
+   2) 动态 DPR（低端机/小核强制 1）
+   3) 页面隐藏暂停 rAF
+   4) 自适应发射概率 & 爆炸粒子数（手机少一点）
+   ========================================================= */
 const canvas = $("#fx");
 const ctx = canvas.getContext("2d");
 
 let W=0,H=0;
-let DPR=Math.max(1, Math.min(2, window.devicePixelRatio||1));
+const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+const isLowEnd = isMobile && (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+
+// DPR：低端手机用 1，中高端最多 2
+let DPR = (isLowEnd ? 1 : Math.max(1, Math.min(2, window.devicePixelRatio||1)));
 
 function resize(){
   W = canvas.clientWidth;
@@ -586,6 +673,10 @@ const rockets = [];
 const parts = [];
 const gravity = 0.06;
 const friction = 0.985;
+
+// 粒子上限：手机更低
+const MAX_PARTS = isLowEnd ? 700 : (isMobile ? 1100 : 1800);
+const MAX_ROCKETS = isLowEnd ? 10 : 18;
 
 function pickColor(){
   return rand([
@@ -616,6 +707,7 @@ function Part(x, y, c){
 }
 
 function launch(){
+  if(rockets.length >= MAX_ROCKETS) return;
   rockets.push(new Rocket(W * (0.2 + 0.6 * Math.random())));
 }
 
@@ -623,14 +715,23 @@ function burst(n=3){
   for(let i=0;i<n;i++) setTimeout(launch, i*120);
 }
 
-setTimeout(()=>burst(2), 520);
+// 开场轻微烟花
+setTimeout(()=>burst(isLowEnd ? 1 : 2), 520);
+
+let running = true;
+document.addEventListener("visibilitychange", ()=>{
+  running = !document.hidden;
+  if(running) requestAnimationFrame(tick);
+});
 
 function tick(){
+  if(!running) return;
   requestAnimationFrame(tick);
 
   ctx.fillStyle = party ? "rgba(0,0,0,.13)" : "rgba(0,0,0,.20)";
   ctx.fillRect(0,0,W,H);
 
+  // rockets
   for(let i=rockets.length-1;i>=0;i--){
     const r = rockets[i];
     r.t++;
@@ -651,12 +752,21 @@ function tick(){
     ctx.fill();
 
     if(r.t > r.m || r.y < H*0.26){
-      const cnt = 90 + Math.floor(Math.random()*50);
-      for(let j=0;j<cnt;j++) parts.push(new Part(r.x, r.y, r.c));
+      // 爆炸粒子数：手机少一点
+      const base = isLowEnd ? 55 : (isMobile ? 75 : 95);
+      const cnt = base + Math.floor(Math.random()*35);
+
+      // 粒子上限控制：超出则丢弃最旧的
+      const room = MAX_PARTS - parts.length;
+      const emit = Math.max(0, Math.min(cnt, room));
+      for(let j=0;j<emit;j++) parts.push(new Part(r.x, r.y, r.c));
+      if(parts.length > MAX_PARTS) parts.splice(0, parts.length - MAX_PARTS);
+
       rockets.splice(i,1);
     }
   }
 
+  // parts
   for(let i=parts.length-1;i>=0;i--){
     const p = parts[i];
     p.vx *= friction;
@@ -677,7 +787,11 @@ function tick(){
     ctx.fill();
   }
 
-  const prob = party ? 0.030 : 0.012;
+  // 自动发射概率：手机低一点
+  const prob = party
+    ? (isLowEnd ? 0.018 : (isMobile ? 0.024 : 0.030))
+    : (isLowEnd ? 0.006 : (isMobile ? 0.009 : 0.012));
+
   if(Math.random() < prob) launch();
 }
 requestAnimationFrame(tick);
