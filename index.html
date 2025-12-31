@@ -165,9 +165,7 @@
     }
     .stage.show{ opacity:1; transform:none; pointer-events:auto; }
 
-    /* =========================================================
-       ✅ 祝福卡片：入场更高级 + 边缘微光 + 更顺滑扫光
-       ========================================================= */
+    /* 卡片 */
     .blessing{
       width:min(960px,94vw);
       padding:30px;
@@ -178,7 +176,6 @@
       position:relative;
       overflow:hidden;
 
-      /* 边缘微光：用多层阴影做“外发光 + 内发光” */
       border:1px solid rgba(255,255,255,.14);
       box-shadow:
         0 0 0 1px rgba(255,255,255,.06) inset,
@@ -189,8 +186,6 @@
       filter: blur(6px);
       transition: transform .65s ease, opacity .65s ease, filter .65s ease;
     }
-
-    /* 入场后：清晰、归位、微呼吸 */
     .stage.show .blessing{
       transform: translateY(0) scale(1);
       opacity: 1;
@@ -212,7 +207,6 @@
       }
     }
 
-    /* 更顺滑“扫光”：改成横向光带滑过 + 更柔和 */
     .blessing::after{
       content:"";
       position:absolute;
@@ -236,7 +230,6 @@
       100% { transform: translateX(65%) rotate(12deg); opacity:.05; }
     }
 
-    /* 边缘微光“光圈” */
     .blessing::before{
       content:"";
       position:absolute;
@@ -257,10 +250,8 @@
       filter: blur(.2px);
       pointer-events:none;
     }
-
     .blessing > *{ position:relative; z-index:1; }
 
-    /* 标题 */
     .h1{
       display:flex; justify-content:center; gap:12px; flex-wrap:wrap;
       font-size:clamp(30px,4vw,54px); font-weight:950;
@@ -276,9 +267,8 @@
       margin-top:18px;
       line-height:1.9;
       white-space:pre-wrap;
-      min-height: 3.8em; /* 防抖：避免打字时高度跳动 */
+      min-height: 3.8em;
     }
-    /* 光标 */
     .caret{
       display:inline-block;
       width:.6ch;
@@ -286,9 +276,7 @@
       opacity:.9;
       animation: blink 1s step-end infinite;
     }
-    @keyframes blink{
-      50%{ opacity:0; }
-    }
+    @keyframes blink{ 50%{ opacity:0; } }
 
     body.party{ filter:saturate(1.12) contrast(1.06); }
 
@@ -314,13 +302,7 @@
       transform:translateX(-50%) translateY(0);
     }
 
-    @media (max-width: 520px){
-      .grain{ opacity:.08; }
-    }
-
-    /* =========================================================
-       微信内置浏览器引导层（只在微信显示）
-       ========================================================= */
+    /* 微信引导 */
     .wxGuide{
       position:fixed;
       inset:0;
@@ -352,17 +334,8 @@
       -webkit-background-clip:text;
       color:transparent;
     }
-    .wxText{
-      font-size:13px;
-      line-height:1.75;
-      color: rgba(255,255,255,.86);
-    }
-    .wxSteps{
-      margin-top:12px;
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
+    .wxText{ font-size:13px; line-height:1.75; color: rgba(255,255,255,.86); }
+    .wxSteps{ margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
     .wxStep{
       font-size:12px;
       padding:8px 10px;
@@ -371,11 +344,7 @@
       background: rgba(0,0,0,.22);
       color: rgba(255,255,255,.82);
     }
-    .wxTip{
-      margin-top:10px;
-      font-size:12px;
-      color: rgba(255,255,255,.75);
-    }
+    .wxTip{ margin-top:10px; font-size:12px; color: rgba(255,255,255,.75); }
     .wxArrow{
       position:absolute;
       top:10px;
@@ -391,7 +360,6 @@
       filter: drop-shadow(0 0 18px rgba(124,92,255,.35));
     }
 
-    /* 减少动画偏好 */
     @media (prefers-reduced-motion: reduce){
       .bokeh i, .meteor, .stars, .grain, .blessing::after{ animation:none !important; }
       .stage, .gate, .blessing{ transition:none !important; }
@@ -449,7 +417,6 @@
 
   <div class="hint" id="hint">轻触任意位置，点亮音乐与烟花 ✨</div>
 
-  <!-- 微信引导层（默认隐藏，仅微信显示） -->
   <div class="wxGuide" id="wxGuide" aria-hidden="true">
     <div class="wxCard">
       <div class="wxTitle">建议在浏览器中打开</div>
@@ -472,7 +439,7 @@
 const $ = s => document.querySelector(s);
 const rand = a => a[Math.floor(Math.random()*a.length)];
 
-/* ===== 微信内置浏览器引导 ===== */
+/* ===== 微信引导 ===== */
 (function wechatGuide(){
   const ua = navigator.userAgent.toLowerCase();
   const isWeChat = ua.includes("micromessenger");
@@ -480,8 +447,8 @@ const rand = a => a[Math.floor(Math.random()*a.length)];
   if(isWeChat && guide) guide.classList.add("show");
 })();
 
-/* ===== 🎵 背景音乐 + 轻提示 ===== */
-const MUSIC_URL = "./Shakira - Try Everything.mp3"; // ← mp3 路径
+/* ===== 🎵 音乐 ===== */
+const MUSIC_URL = "./Shakira - Try Everything.mp3";
 const audio = new Audio(MUSIC_URL);
 audio.loop = true;
 audio.volume = 0.35;
@@ -525,63 +492,80 @@ const pool=[
 
 let party = false;
 
-/* ===== ✅ 打字机（2秒完成） ===== */
+/* =========================================================
+   ✅ 强化版打字机：保证逐字显示（更稳定）
+   - 先清空
+   - 先渲染一帧（让卡片入场先显示）
+   - 再逐字 append
+   ========================================================= */
+let typingAbort = null;
+
 function typewriter(el, text, durationMs = 2000){
-  // 先清空
-  el.innerHTML = "";
+  if(typeof typingAbort === "function") typingAbort(); // 停止上一次
+
+  let stopped = false;
+  typingAbort = () => { stopped = true; };
+
+  // 清空并加光标
+  el.textContent = "";
   const caret = document.createElement("span");
   caret.className = "caret";
   caret.textContent = "▍";
   el.appendChild(caret);
 
-  const chars = Array.from(text); // 支持中文/emoji
+  const chars = Array.from(text);
   const total = chars.length;
-  const step = Math.max(12, Math.floor(durationMs / Math.max(1, total)));
+
+  // 每字间隔（最小 22ms，保证肉眼可见）
+  const step = Math.max(22, Math.floor(durationMs / Math.max(1, total)));
 
   let i = 0;
-  const timer = setInterval(()=>{
-    if(i >= total){
-      clearInterval(timer);
-      // 停留一下再移除光标更自然
-      setTimeout(()=>caret.remove(), 500);
-      return;
-    }
-    caret.insertAdjacentText("beforebegin", chars[i]);
-    i++;
-  }, step);
 
-  return () => clearInterval(timer);
+  // 先等两帧 + 120ms：让入场动画先落地，避免“看起来瞬间完成”
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      setTimeout(function run(){
+        if(stopped) return;
+        if(i >= total){
+          // 结束：光标停一下再消失
+          setTimeout(()=>{ if(!stopped) caret.remove(); }, 550);
+          return;
+        }
+        caret.insertAdjacentText("beforebegin", chars[i]);
+        i++;
+        setTimeout(run, step);
+      }, 120);
+    });
+  });
 }
 
-let stopTyping = null;
-
+/* ===== 展示 ===== */
 function show(name){
   const clean = (name || "").trim().slice(0,18);
   if(!clean) return;
 
   const year = new Date().getFullYear() + 1;
-
   $("#headline").innerHTML =
     `<span class="emoji">🎆</span><span class="titleText">${clean}，${year} 新年快乐！</span>`;
 
-  // ✅ 打字机：先停止上一次
-  if(typeof stopTyping === "function") stopTyping();
-
   const fullText = rand(pool) + `\n\n— 专属给 ${clean} 的祝福`;
-  stopTyping = typewriter($("#text"), fullText, 2000);
 
+  // ✅ 关键：先切换舞台（让卡片出现），再打字
   $("#gate").classList.add("hidden");
   $("#stage").classList.add("show");
   document.body.classList.add("party");
+
+  // ✅ 打字机（2秒完成）
+  typewriter($("#text"), fullText, 2000);
 
   party = true;
   burst(7);
 }
 
-$("#go").onclick=()=>show($("#name").value);
-$("#name").onkeydown=e=>e.key==="Enter" && show($("#name").value);
+$("#go").onclick = () => show($("#name").value);
+$("#name").onkeydown = e => e.key==="Enter" && show($("#name").value);
 
-/* ===== 烟花（升级版：粒子烟花） ===== */
+/* ===== 烟花 ===== */
 const canvas = $("#fx");
 const ctx = canvas.getContext("2d");
 
@@ -639,7 +623,6 @@ function burst(n=3){
   for(let i=0;i<n;i++) setTimeout(launch, i*120);
 }
 
-// 开场轻微烟花（不影响输入）
 setTimeout(()=>burst(2), 520);
 
 function tick(){
