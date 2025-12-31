@@ -43,7 +43,7 @@
       100%{ transform: translate3d(0,0,0); }
     }
 
-    /* ✅ 新增：星空闪烁层（很轻） */
+    /* ✅ 星空闪烁层 */
     .stars{
       position:fixed; inset:0;
       pointer-events:none;
@@ -66,10 +66,8 @@
       to{ opacity:.68; filter: blur(0px); }
     }
 
-    /* ✅ 新增：流星层 */
-    .meteors{
-      position:fixed; inset:0; pointer-events:none; z-index:0;
-    }
+    /* ✅ 流星层 */
+    .meteors{ position:fixed; inset:0; pointer-events:none; z-index:0; }
     .meteor{
       position:absolute;
       top: var(--top);
@@ -232,6 +230,79 @@
     @media (max-width: 520px){
       .grain{ opacity:.08; }
     }
+
+    /* =========================================================
+       ✅ 新增：微信内置浏览器引导层（只在微信显示）
+       ========================================================= */
+    .wxGuide{
+      position:fixed;
+      inset:0;
+      z-index:999;
+      display:none;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(10px);
+    }
+    .wxGuide.show{ display:block; }
+
+    .wxCard{
+      position:absolute;
+      left:50%;
+      top:16vh;
+      transform:translateX(-50%);
+      width:min(620px, 92vw);
+      border-radius:22px;
+      border:1px solid rgba(255,255,255,.18);
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      box-shadow: 0 0 30px rgba(124,92,255,.22), 0 0 80px rgba(0,255,240,.10);
+      padding:18px 18px 16px;
+    }
+    .wxTitle{
+      font-weight:900;
+      letter-spacing:.6px;
+      font-size:18px;
+      margin-bottom:8px;
+      background: linear-gradient(90deg, #fff, #A6E3FF 35%, #C9B7FF 70%, #fff);
+      -webkit-background-clip:text;
+      color:transparent;
+    }
+    .wxText{
+      font-size:13px;
+      line-height:1.75;
+      color: rgba(255,255,255,.86);
+    }
+    .wxSteps{
+      margin-top:12px;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .wxStep{
+      font-size:12px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.22);
+      color: rgba(255,255,255,.82);
+    }
+    .wxTip{
+      margin-top:10px;
+      font-size:12px;
+      color: rgba(255,255,255,.75);
+    }
+    .wxArrow{
+      position:absolute;
+      top:10px;
+      right:16px;
+      width:170px;
+      height:120px;
+      pointer-events:none;
+      background:
+        radial-gradient(closest-side at 78% 20%, rgba(255,255,255,.85), rgba(255,255,255,0) 65%),
+        linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,0));
+      clip-path: polygon(100% 0, 65% 4%, 78% 18%, 35% 55%, 40% 62%, 76% 28%, 90% 44%);
+      opacity:.75;
+      filter: drop-shadow(0 0 18px rgba(124,92,255,.35));
+    }
   </style>
 </head>
 
@@ -246,7 +317,6 @@
     <div class="meteor" style="--top:8vh; --left:-55vw;--dur:11.2s"></div>
   </div>
 
-  <!-- ✅ bokeh 数量增加一些，更丰富 -->
   <div class="bokeh" aria-hidden="true">
     <i style="--s:14px;--o:.25;--x:8vw; --y:78vh;--t:14s"></i>
     <i style="--s:22px;--o:.18;--x:16vw;--y:70vh;--t:18s"></i>
@@ -285,10 +355,40 @@
 
   <div class="hint" id="hint">轻触任意位置，点亮音乐与烟花 ✨</div>
 
+  <!-- ✅ 新增：微信引导层（默认隐藏，仅微信显示） -->
+  <div class="wxGuide" id="wxGuide" aria-hidden="true">
+    <div class="wxCard">
+      <div class="wxTitle">建议在浏览器中打开</div>
+      <div class="wxText">
+        微信内置环境会限制音乐与部分动画效果。<br/>
+        请点击右上角 <b>「···」</b> → 选择 <b>「在浏览器打开」</b>，体验更完整 ✨
+      </div>
+      <div class="wxSteps">
+        <span class="wxStep">1 点右上角「···」</span>
+        <span class="wxStep">2 选择「在浏览器打开」</span>
+        <span class="wxStep">3 轻触屏幕开启音乐</span>
+      </div>
+      <div class="wxTip">打开后：输入姓名 → 生成专属祝福 🎆</div>
+    </div>
+    <div class="wxArrow" aria-hidden="true"></div>
+  </div>
+
 <script>
 /* ===== 工具 ===== */
 const $ = s => document.querySelector(s);
 const rand = a => a[Math.floor(Math.random()*a.length)];
+
+/* =========================================================
+   ✅ 新增：仅在微信内置浏览器显示引导层
+   ========================================================= */
+(function wechatGuide(){
+  const ua = navigator.userAgent.toLowerCase();
+  const isWeChat = ua.includes("micromessenger");
+  const guide = document.getElementById("wxGuide");
+  if(isWeChat && guide){
+    guide.classList.add("show");
+  }
+})();
 
 /* ===== 🎵 背景音乐 + 轻提示 ===== */
 const MUSIC_URL = "./Shakira - Try Everything.mp3"; // ← mp3 路径
@@ -312,9 +412,9 @@ async function tryPlayMusic(){
     showHint();
   }
 }
-
 window.addEventListener("load", tryPlayMusic);
 
+// 若被拦截：任意首次交互自动续播（只触发一次）
 function unlockOnce(){
   tryPlayMusic();
   window.removeEventListener("pointerdown", unlockOnce);
